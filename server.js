@@ -9,6 +9,27 @@ import crypto from "node:crypto";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+const COOKIE_FILE = "/tmp/youtube-cookies.txt";
+
+async function configureCookies() {
+  const encoded = process.env.YOUTUBE_COOKIES_B64;
+  if (!encoded) return false;
+
+  try {
+    const content = Buffer.from(encoded, "base64").toString("utf8");
+    if (!content.includes(".youtube.com") && !content.includes("youtube.com")) {
+      console.warn("YOUTUBE_COOKIES_B64 foi definido, mas o conteúdo não parece conter cookies do YouTube.");
+    }
+    await fs.writeFile(COOKIE_FILE, content, { mode: 0o600 });
+    console.log("Cookies do YouTube configurados via variável secreta.");
+    return true;
+  } catch (error) {
+    console.error("Falha ao configurar cookies:", error);
+    return false;
+  }
+}
+
+const COOKIES_CONFIGURED = await configureCookies();
 
 const configuredOrigins = (process.env.ALLOWED_ORIGINS || "*")
   .split(",")
@@ -58,10 +79,14 @@ const YTDLP_COMMON_ARGS = [
   "node",
   "--remote-components",
   "ejs:github",
+  "--impersonate",
+  "chrome",
+  "--force-ipv4",
   "--extractor-args",
   "youtubepot-bgutilscript:server_home=/opt/bgutil/server",
   "--extractor-args",
   "youtube:player_client=mweb,default",
+  ...(COOKIES_CONFIGURED ? ["--cookies", COOKIE_FILE] : []),
 ];
 
 function validateYoutubeUrl(value) {
@@ -140,7 +165,7 @@ function runProcess(command, args, { cwd, timeoutMs = 15 * 60 * 1000 } = {}) {
         const cleanMessage = stderr
           .split("\n")
           .filter(Boolean)
-          .slice(-8)
+          .slice(-30)
           .join("\n");
 
         reject(new Error(cleanMessage || `${command} terminou com código ${code}.`));
@@ -155,7 +180,6 @@ async function getVideoInfo(url) {
     "--no-playlist",
     "--skip-download",
     "--dump-single-json",
-    "--no-warnings",
     url,
   ];
 
@@ -199,7 +223,6 @@ function buildDownloadArgs({ url, format, quality }) {
   const base = [
     ...YTDLP_COMMON_ARGS,
     "--no-playlist",
-    "--no-warnings",
     "--restrict-filenames",
     "--output",
     outputTemplate,
@@ -275,6 +298,9 @@ app.get("/diagnostics", async (_req, res) => {
     poProviderPath: "/opt/bgutil/server",
     jsRuntime: "node",
     playerClients: ["mweb", "default"],
+    cookiesConfigured: COOKIES_CONFIGURED,
+    impersonation: "chrome",
+    forceIPv4: true,
   });
 });
 

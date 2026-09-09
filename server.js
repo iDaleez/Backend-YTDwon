@@ -47,6 +47,13 @@ const ALLOWED_HOSTS = new Set([
   "youtu.be",
 ]);
 
+// YouTube currently requires an external JavaScript runtime for full yt-dlp support.
+// This image uses Node 22+ and yt-dlp-ejs via the "default" pip extras.
+const YTDLP_COMMON_ARGS = [
+  "--js-runtimes",
+  "node",
+];
+
 function validateYoutubeUrl(value) {
   if (typeof value !== "string" || value.length > 2048) {
     throw new Error("URL inválida.");
@@ -134,6 +141,7 @@ function runProcess(command, args, { cwd, timeoutMs = 15 * 60 * 1000 } = {}) {
 
 async function getVideoInfo(url) {
   const args = [
+    ...YTDLP_COMMON_ARGS,
     "--no-playlist",
     "--skip-download",
     "--dump-single-json",
@@ -179,6 +187,7 @@ async function findGeneratedFile(dir) {
 function buildDownloadArgs({ url, format, quality }) {
   const outputTemplate = "%(title).160B [%(id)s].%(ext)s";
   const base = [
+    ...YTDLP_COMMON_ARGS,
     "--no-playlist",
     "--no-warnings",
     "--restrict-filenames",

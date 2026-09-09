@@ -47,11 +47,21 @@ const ALLOWED_HOSTS = new Set([
   "youtu.be",
 ]);
 
-// YouTube currently requires an external JavaScript runtime for full yt-dlp support.
-// This image uses Node 22+ and yt-dlp-ejs via the "default" pip extras.
+// YouTube changes frequently. This container uses:
+// - Node 26 as the EJS runtime
+// - yt-dlp nightly
+// - yt-dlp-ejs
+// - BgUtils automatic PO Token provider
+// - mweb + default clients
 const YTDLP_COMMON_ARGS = [
   "--js-runtimes",
   "node",
+  "--remote-components",
+  "ejs:github",
+  "--extractor-args",
+  "youtubepot-bgutilscript:server_home=/opt/bgutil/server",
+  "--extractor-args",
+  "youtube:player_client=mweb,default",
 ];
 
 function validateYoutubeUrl(value) {
@@ -240,6 +250,34 @@ function buildDownloadArgs({ url, format, quality }) {
   throw new Error("Formato inválido.");
 }
 
+
+async function getCommandVersion(command, args = ["--version"]) {
+  try {
+    const { stdout, stderr } = await runProcess(command, args, { timeoutMs: 30_000 });
+    return (stdout || stderr).trim().split("\n")[0];
+  } catch (error) {
+    return `ERROR: ${error.message}`;
+  }
+}
+
+app.get("/diagnostics", async (_req, res) => {
+  const [ytdlp, node, ffmpeg] = await Promise.all([
+    getCommandVersion("yt-dlp"),
+    getCommandVersion("node"),
+    getCommandVersion("ffmpeg", ["-version"]),
+  ]);
+
+  res.json({
+    ok: true,
+    ytDlp: ytdlp,
+    node,
+    ffmpeg,
+    poProviderPath: "/opt/bgutil/server",
+    jsRuntime: "node",
+    playerClients: ["mweb", "default"],
+  });
+});
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
@@ -338,8 +376,12 @@ app.post("/api/download", async (req, res) => {
 function normalizePublicError(error) {
   const message = String(error?.message || "Erro desconhecido.");
 
+  if (/Failed to extract any player response/i.test(message)) {
+    return "O YouTube não retornou uma resposta de player válida para este servidor. Verifique /diagnostics e os logs do Render.";
+  }
+
   if (/Sign in to confirm|bot|cookies/i.test(message)) {
-    return "O YouTube recusou a requisição do servidor. O yt-dlp pode precisar ser atualizado ou de configuração adicional.";
+    return "O YouTube recusou a requisição do servidor ou exigiu verificação adicional.";
   }
 
   if (/Video unavailable/i.test(message)) {

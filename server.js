@@ -51,7 +51,7 @@ const ALLOWED_HOSTS = new Set([
 // - Node 26 as the EJS runtime
 // - yt-dlp nightly
 // - yt-dlp-ejs
-// - BgUtils automatic PO Token provider
+// - BgUtils 2.0.0 automatic PO Token provider
 // - mweb + default clients
 const YTDLP_COMMON_ARGS = [
   "--js-runtimes",
